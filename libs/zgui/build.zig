@@ -221,8 +221,9 @@ pub fn build(b: *std.Build) void {
                 .files = &.{
                     "libs/imgui/backends/imgui_impl_glfw.cpp",
                     "libs/imgui/backends/imgui_impl_opengl3.cpp",
+                    "libs/imgui/backends/imgui_impl_opengl3.cpp",
                 },
-                .flags = &(cflags.* ++ .{"-DIMGUI_IMPL_OPENGL_LOADER_CUSTOM"}),
+                .flags = cflags,
             });
         },
         .glfw_dx12 => {

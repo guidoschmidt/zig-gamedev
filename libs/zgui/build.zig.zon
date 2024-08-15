@@ -11,6 +11,7 @@
     .dependencies = .{
         .zglfw = .{ .path = "../zglfw" },
         .zgpu = .{ .path = "../zgpu" },
+        .zopengl = .{ .path = "../zgpu" },
         .system_sdk = .{ .path = "../system-sdk" },
     },
 }
