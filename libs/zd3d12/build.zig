@@ -3,9 +3,6 @@ const std = @import("std");
 const default_upload_heap_capacity: u32 = 32 * 1024 * 1024;
 
 pub fn build(b: *std.Build) void {
-    const optimize = b.standardOptimizeOption(.{});
-    const target = b.standardTargetOptions(.{});
-
     const options = .{
         .debug_layer = b.option(
             bool,
@@ -32,9 +29,7 @@ pub fn build(b: *std.Build) void {
 
     const options_module = options_step.createModule();
 
-    const zwin32 = b.dependency("zwin32", .{
-        .target = target,
-    });
+    const zwin32 = b.dependency("zwin32", .{});
     const zwin32_module = zwin32.module("root");
 
     _ = b.addModule("root", .{
@@ -44,20 +39,4 @@ pub fn build(b: *std.Build) void {
             .{ .name = "zwin32", .module = zwin32_module },
         },
     });
-
-    const test_step = b.step("test", "Run zd3d12 tests");
-
-    const tests = b.addTest(.{
-        .name = "zd3d12-tests",
-        .root_source_file = b.path("src/zd3d12.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    tests.root_module.addImport("zwin32", zwin32_module);
-    tests.root_module.addImport("zd3d12_options", options_module);
-    b.installArtifact(tests);
-
-    test_step.dependOn(&b.addRunArtifact(tests).step);
-
-    @import("zwin32").install_d3d12(&tests.step, .bin);
 }

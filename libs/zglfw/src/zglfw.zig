@@ -125,6 +125,14 @@ pub fn maybeErrorString(str: *?[:0]const u8) Error!void {
 }
 extern fn glfwGetError(description: ?*?[*:0]const u8) i32;
 
+/// `pub fn setErrorCallback(callback: ?ErrorFn) ?ErrorFn`
+pub const setErrorCallback = glfwSetErrorCallback;
+extern fn glfwSetErrorCallback(callback: ?ErrorFn) ?ErrorFn;
+pub const ErrorFn = *const fn (
+    error_code: i32,
+    description: *?[:0]const u8,
+) callconv(.C) void;
+
 pub const InputMode = enum(i32) {
     cursor = 0x00033001,
     sticky_keys = 0x00033002,
@@ -717,6 +725,14 @@ pub const Window = opaque {
         ypos: i32,
     ) callconv(.C) void;
 
+    /// `pub const setFocusCallback(window: *Window, callback: ?WindowFocusFn) ?WindowFocusFn`
+    pub const setFocusCallback = glfwSetWindowFocusCallback;
+    extern fn glfwSetWindowFocusCallback(window: *Window, callback: ?WindowFocusFn) ?WindowFocusFn;
+    pub const WindowFocusFn = *const fn (
+        window: *Window,
+        focused: i32,
+    ) callconv(.C) void;
+
     /// `pub const setContentScaleCallback(window: *Window, callback: ?WindowContentScaleFn) ?WindowContentScaleFn`
     pub const setContentScaleCallback = glfwSetWindowContentScaleCallback;
     extern fn glfwSetWindowContentScaleCallback(window: *Window, callback: ?WindowContentScaleFn) ?WindowContentScaleFn;
@@ -1048,7 +1064,6 @@ fn _isLinuxDesktopLike() bool {
     return switch (builtin.target.os.tag) {
         .linux,
         .freebsd,
-        .kfreebsd,
         .openbsd,
         .dragonfly,
         => true,

@@ -1,4 +1,4 @@
-# zgui v0.2.0 - dear imgui bindings
+# zgui v0.5.0 - dear imgui bindings
 
 Easy to use, hand-crafted API with default arguments, named parameters and Zig style text formatting. [Here](https://github.com/michal-z/zig-gamedev/tree/main/samples/minimal_zgpu_zgui) is a simple sample application, and [here](https://github.com/michal-z/zig-gamedev/tree/main/samples/gui_test_wgpu) is a full one.
 
@@ -7,14 +7,18 @@ Easy to use, hand-crafted API with default arguments, named parameters and Zig s
 * Most public dear imgui API exposed
 * All memory allocations go through user provided Zig allocator
 * [DrawList API](#drawlist-api) for vector graphics, text rendering and custom widgets
-* [Plot API](#plot-api) for advanced data visualizations
 * [Test engine API](#test-engine-api) for automatic testing
+* [Plot API](#plot-api) for advanced data visualizations
+* [Gizmo API](#gizmo-api) for gizmo
+* [Node editor API](#node-editor-api) for node based stuff
 
 ## Versions
 
-* [ImGui](https://github.com/ocornut/imgui/tree/v1.90.4-docking) `1.90.4-docking`
-* [ImGui test engine](https://github.com/ocornut/imgui_test_engine/tree/v1.90.4)  `1.90.4`
+* [ImGui](https://github.com/ocornut/imgui/tree/v1.91.0-docking) `1.91.0-docking`
+* [ImGui test engine](https://github.com/ocornut/imgui_test_engine/tree/v1.91.0)  `1.91.0`
 * [ImPlot](https://github.com/epezent/implot) `O.17`
+* [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo) `1.89 WIP`
+* [ImGuiNodeEditor](https://github.com/thedmd/imgui-node-editor/tree/v0.9.3) `O.9.3`
 
 ## Getting started
 
@@ -139,21 +143,6 @@ draw_list.addPolyline(
     .{ .col = 0xff_00_aa_11, .thickness = 7 },
 );
 ```
-### Plot API
-```zig
-if (zgui.plot.beginPlot("Line Plot", .{ .h = -1.0 })) {
-    zgui.plot.setupAxis(.x1, .{ .label = "xaxis" });
-    zgui.plot.setupAxisLimits(.x1, .{ .min = 0, .max = 5 });
-    zgui.plot.setupLegend(.{ .south = true, .west = true }, .{});
-    zgui.plot.setupFinish();
-    zgui.plot.plotLineValues("y data", i32, .{ .v = &.{ 0, 1, 0, 1, 0, 1 } });
-    zgui.plot.plotLine("xy data", f32, .{
-        .xv = &.{ 0.1, 0.2, 0.5, 2.5 },
-        .yv = &.{ 0.1, 0.3, 0.5, 0.9 },
-    });
-    zgui.plot.endPlot();
-}
-```
 
 ### Test Engine API
 Zig wraper for [ImGUI test engine](https://github.com/ocornut/imgui_test_engine).
@@ -197,5 +186,62 @@ fn registerTests() void {
             }
         },
     );
+}
+```
+
+### Plot API
+```zig
+if (zgui.plot.beginPlot("Line Plot", .{ .h = -1.0 })) {
+    zgui.plot.setupAxis(.x1, .{ .label = "xaxis" });
+    zgui.plot.setupAxisLimits(.x1, .{ .min = 0, .max = 5 });
+    zgui.plot.setupLegend(.{ .south = true, .west = true }, .{});
+    zgui.plot.setupFinish();
+    zgui.plot.plotLineValues("y data", i32, .{ .v = &.{ 0, 1, 0, 1, 0, 1 } });
+    zgui.plot.plotLine("xy data", f32, .{
+        .xv = &.{ 0.1, 0.2, 0.5, 2.5 },
+        .yv = &.{ 0.1, 0.3, 0.5, 0.9 },
+    });
+    zgui.plot.endPlot();
+}
+```
+
+### Gizmo API
+
+Zig wraper for [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo).
+
+
+### Node editor API
+
+Zig wraper for [ImGuiNodeEditor](https://github.com/thedmd/imgui-node-editor).
+
+```zig
+var node_editor = zgui.node_editor.EditorContext.create(.{ .enable_smooth_zoom = true }),
+
+zgui.node_editor.setCurrentEditor(node_editor);
+defer zgui.node_editor.setCurrentEditor(null);
+{
+    zgui.node_editor.begin("NodeEditor", .{ 0, 0 });
+    defer zgui.node_editor.end();
+
+    zgui.node_editor.beginNode(1);
+    {
+        defer zgui.node_editor.endNode();
+
+        zgui.textUnformatted("Node A");
+
+        zgui.node_editor.beginPin(1, .input);
+        {
+            defer zgui.node_editor.endPin();
+            zgui.textUnformatted("-> In");
+        }
+
+        zgui.sameLine(.{});
+
+        zgui.node_editor.beginPin(2, .output);
+        {
+            defer zgui.node_editor.endPin();
+            zgui.textUnformatted("Out ->");
+        }
+    }
 }
 ```

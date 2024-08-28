@@ -83,9 +83,6 @@ pub fn build(b: *std.Build) void {
         { // Tests
             const test_step = b.step("test", "Run all tests");
             tests(b, target, optimize, test_step);
-            if (builtin.os.tag == .windows) {
-                testsWindows(b, target, optimize, test_step);
-            }
         }
 
         { // Benchmarks
@@ -124,6 +121,7 @@ const samples_windows_linux = struct {
     //pub const simple_raytracer = @import("samples/simple_raytracer/build.zig");
     pub const textured_quad = @import("samples/textured_quad/build.zig");
     pub const triangle = @import("samples/triangle/build.zig");
+    pub const zphysics_instanced_cubes_d3d12 = @import("samples/zphysics_instanced_cubes_d3d12/build.zig");
 };
 
 const samples_cross_platform = struct {
@@ -196,15 +194,28 @@ fn buildAndInstallSamples(b: *std.Build, options: anytype, comptime samples: any
 
 fn buildAndInstallSamplesWeb(b: *std.Build, options: anytype) void {
     inline for (comptime std.meta.declarations(samples_web)) |d| {
-        const web_install_step = @field(samples_web, d.name).buildWeb(b, options);
+        const build_web_app_step = @field(samples_web, d.name).buildWeb(b, options);
+        build_web_app_step.dependOn(@import("zemscripten").activateEmsdkStep(b));
+        b.getInstallStep().dependOn(build_web_app_step);
 
-        b.step(d.name, "Build '" ++ d.name ++ "' demo").dependOn(web_install_step);
+        b.step(d.name, "Build '" ++ d.name ++ "' demo").dependOn(build_web_app_step);
 
-        const html_filename = std.fmt.allocPrint(b.allocator, "{s}.html", .{d.name}) catch unreachable;
-        const emrun_step = @import("zemscripten").emrunStep(b, b.getInstallPath(.{ .custom = "web" }, html_filename));
-        emrun_step.dependOn(web_install_step);
+        const html_filename = std.fmt.allocPrint(
+            b.allocator,
+            "{s}.html",
+            .{d.name},
+        ) catch unreachable;
 
-        const run_step = b.step("run", "Serve and run the web app locally");
+        const emrun_args = .{};
+        const emrun_step = @import("zemscripten").emrunStep(
+            b,
+            b.getInstallPath(.{ .custom = "web" }, html_filename),
+            &emrun_args,
+        );
+
+        emrun_step.dependOn(build_web_app_step);
+
+        const run_step = b.step(d.name ++ "-run", "Serve and run the web app locally");
         run_step.dependOn(emrun_step);
     }
 }
@@ -293,47 +304,6 @@ fn tests(
         .optimize = optimize,
     });
     test_step.dependOn(&b.addRunArtifact(ztracy.artifact("ztracy-tests")).step);
-}
-
-fn testsWindows(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    test_step: *std.Build.Step,
-) void {
-    const zd3d12 = b.dependency("zd3d12", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    test_step.dependOn(&b.addRunArtifact(zd3d12.artifact("zd3d12-tests")).step);
-
-    const zpix = b.dependency("zpix", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    test_step.dependOn(&b.addRunArtifact(zpix.artifact("zpix-tests")).step);
-
-    const zwin32 = b.dependency("zwin32", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    test_step.dependOn(&b.addRunArtifact(zwin32.artifact("zwin32-tests")).step);
-
-    const zxaudio2 = b.dependency("zxaudio2", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    test_step.dependOn(&b.addRunArtifact(zxaudio2.artifact("zxaudio2-tests")).step);
-
-    const zopenvr = b.dependency("zopenvr", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const openvr_tests = b.addRunArtifact(zopenvr.artifact("openvr-tests"));
-    openvr_tests.setCwd(.{ .cwd_relative = b.getInstallPath(.bin, "") });
-
-    test_step.dependOn(&openvr_tests.step);
-    @import("zopenvr").installOpenVR(&openvr_tests.step, target.result, .bin);
 }
 
 // TODO: Delete this once Zig checks minimum_zig_version in build.zig.zon

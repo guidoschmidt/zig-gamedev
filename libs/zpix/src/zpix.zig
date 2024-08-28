@@ -1,6 +1,11 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const w32 = @import("zwin32").w32;
+
+comptime {
+    std.testing.refAllDecls(@This());
+}
+
+const w32 = std.os.windows;
 const HMODULE = w32.HMODULE;
 const HRESULT = w32.HRESULT;
 const GUID = w32.GUID;
@@ -16,10 +21,6 @@ const UINT32 = u32;
 
 const options = @import("zpix_options");
 const enable = if (@hasDecl(options, "enable")) options.enable else false;
-
-test {
-    std.testing.refAllDeclsRecursive(@This());
-}
 
 pub const CAPTURE_FLAGS = packed struct(UINT32) {
     TIMING: bool = false,
@@ -150,7 +151,7 @@ const PixLibrary = if (enable) struct {
     module: HMODULE,
 
     pub fn deinit(self: PixLibrary) void {
-        std.os.windows.FreeLibrary(self.module);
+        w32.FreeLibrary(self.module);
     }
 } else struct {
     pub fn deinit(_: PixLibrary) void {}

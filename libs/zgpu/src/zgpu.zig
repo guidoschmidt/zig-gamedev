@@ -71,6 +71,7 @@ pub const WindowProvider = struct {
 pub const GraphicsContextOptions = struct {
     present_mode: wgpu.PresentMode = .fifo,
     required_features: []const wgpu.FeatureName = &.{},
+    required_limits: ?*const wgpu.RequiredLimits = null,
 };
 
 pub const GraphicsContext = struct {
@@ -203,6 +204,7 @@ pub const GraphicsContext = struct {
                         null,
                     .required_features_count = options.required_features.len,
                     .required_features = options.required_features.ptr,
+                    .required_limits = @ptrCast(options.required_limits),
                 },
                 callback,
                 @ptrCast(&response),
@@ -768,9 +770,8 @@ pub const GraphicsContext = struct {
         gctx: *GraphicsContext,
         bind_group_layouts: []const BindGroupLayoutHandle,
     ) PipelineLayoutHandle {
-        assert(bind_group_layouts.len > 0);
-
         var info: PipelineLayoutInfo = .{ .num_bind_group_layouts = @as(u32, @intCast(bind_group_layouts.len)) };
+
         var gpu_bind_group_layouts: [max_num_bind_groups_per_pipeline]wgpu.BindGroupLayout = undefined;
 
         for (bind_group_layouts, 0..) |bgl, i| {
@@ -780,7 +781,7 @@ pub const GraphicsContext = struct {
 
         info.gpuobj = gctx.device.createPipelineLayout(.{
             .bind_group_layout_count = info.num_bind_group_layouts,
-            .bind_group_layouts = &gpu_bind_group_layouts,
+            .bind_group_layouts = if (bind_group_layouts.len > 0) &gpu_bind_group_layouts else null,
         });
 
         return gctx.pipeline_layout_pool.addResource(gctx.*, info);

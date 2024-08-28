@@ -1,5 +1,10 @@
 const std = @import("std");
 const assert = std.debug.assert;
+
+comptime {
+    std.testing.refAllDecls(@This());
+}
+
 const zwin32 = @import("zwin32");
 const w32 = zwin32.w32;
 const dwrite = zwin32.dwrite;
@@ -21,10 +26,6 @@ const enable_debug_layer = @import("zd3d12_options").debug_layer;
 const enable_gbv = @import("zd3d12_options").gbv;
 const enable_d2d = @import("zd3d12_options").d2d;
 const upload_heap_capacity = @import("zd3d12_options").upload_heap_capacity;
-
-test {
-    std.testing.refAllDeclsRecursive(@This());
-}
 
 // TODO(mziulek): For now, we always transition *all* subresources.
 const TransitionResourceBarrier = struct {
@@ -62,6 +63,35 @@ pub fn ConstantBufferHandle(comptime T: type) type {
 pub const VerticesHandle = struct {
     resource: ResourceHandle,
     view: d3d12.VERTEX_BUFFER_VIEW,
+
+    fn init(comptime T: type, gctx: *GraphicsContext, vertices_length: usize) !VerticesHandle {
+        switch (@typeInfo(T)) {
+            .Struct => |s| {
+                if (s.layout != .@"extern") {
+                    @compileError(@typeName(T) ++ " must be extern");
+                }
+            },
+            else => {},
+        }
+
+        const buffer_length: w32.UINT = @intCast(vertices_length * @sizeOf(T));
+        const resource_handle = try gctx.createCommittedResource(
+            .UPLOAD,
+            .{},
+            &d3d12.RESOURCE_DESC.initBuffer(buffer_length),
+            d3d12.RESOURCE_STATES.GENERIC_READ,
+            null,
+        );
+
+        return .{
+            .resource = resource_handle,
+            .view = .{
+                .BufferLocation = gctx.lookupResource(resource_handle).?.GetGPUVirtualAddress(),
+                .StrideInBytes = @sizeOf(T),
+                .SizeInBytes = buffer_length,
+            },
+        };
+    }
 };
 pub const VertexIndicesHandle = struct {
     resource: ResourceHandle,
@@ -756,7 +786,7 @@ pub const GraphicsContext = struct {
         const gpu_frame_counter = gctx.frame_fence.GetCompletedValue();
         if ((gctx.frame_fence_counter - gpu_frame_counter) >= max_num_buffered_frames) {
             hrPanicOnFail(gctx.frame_fence.SetEventOnCompletion(gpu_frame_counter + 1, gctx.frame_fence_event));
-            _ = w32.WaitForSingleObject(gctx.frame_fence_event, w32.INFINITE);
+            w32.WaitForSingleObject(gctx.frame_fence_event, w32.INFINITE) catch {};
         }
 
         gctx.frame_index = (gctx.frame_index + 1) % max_num_buffered_frames;
@@ -863,7 +893,7 @@ pub const GraphicsContext = struct {
 
         hrPanicOnFail(gctx.cmdqueue.Signal(gctx.frame_fence, gctx.frame_fence_counter));
         hrPanicOnFail(gctx.frame_fence.SetEventOnCompletion(gctx.frame_fence_counter, gctx.frame_fence_event));
-        _ = w32.WaitForSingleObject(gctx.frame_fence_event, w32.INFINITE);
+        w32.WaitForSingleObject(gctx.frame_fence_event, w32.INFINITE) catch {};
 
         // Reset current non-persistent heap (+1 because heap 0 is persistent)
         gctx.cbv_srv_uav_gpu_heaps[gctx.frame_index + 1].size = 0;
@@ -997,33 +1027,11 @@ pub const GraphicsContext = struct {
         comptime T: type,
         vertices: []const T,
     ) HResultError!VerticesHandle {
-        switch (@typeInfo(T)) {
-            .Struct => |s| {
-                if (s.layout != .@"extern") {
-                    @compileError(@typeName(T) ++ " must be extern");
-                }
-            },
-            else => {},
-        }
-        const buffer_length: w32.UINT = @intCast(vertices.len * @sizeOf(T));
-        const resource_handle = try gctx.createCommittedResource(
-            .UPLOAD,
-            .{},
-            &d3d12.RESOURCE_DESC.initBuffer(buffer_length),
-            d3d12.RESOURCE_STATES.GENERIC_READ,
-            null,
-        );
+        const handle = try VerticesHandle.init(T, gctx, vertices.len);
 
-        try gctx.writeResource(T, resource_handle, vertices);
+        try gctx.writeVertices(T, handle, vertices);
 
-        return .{
-            .resource = resource_handle,
-            .view = .{
-                .BufferLocation = gctx.lookupResource(resource_handle).?.GetGPUVirtualAddress(),
-                .StrideInBytes = @sizeOf(T),
-                .SizeInBytes = buffer_length,
-            },
-        };
+        return handle;
     }
 
     pub fn uploadVertexIndices(
@@ -1058,6 +1066,36 @@ pub const GraphicsContext = struct {
                 .SizeInBytes = buffer_length,
             },
         };
+    }
+
+    pub fn createWritableVertices(
+        gctx: *GraphicsContext,
+        comptime T: type,
+        vertices_length: usize,
+    ) HResultError!VerticesHandle {
+        switch (@typeInfo(T)) {
+            .Struct => |s| {
+                if (s.layout != .@"extern") {
+                    @compileError(@typeName(T) ++ " must be extern");
+                }
+            },
+            else => {},
+        }
+
+        return try VerticesHandle.init(T, gctx, vertices_length);
+    }
+
+    pub fn createDepthStencilView(
+        gctx: *GraphicsContext,
+        handle: ResourceHandle,
+        desc: ?*const d3d12.DEPTH_STENCIL_VIEW_DESC,
+        view: d3d12.CPU_DESCRIPTOR_HANDLE,
+    ) void {
+        gctx.device.CreateDepthStencilView(
+            gctx.lookupResource(handle).?,
+            desc,
+            view,
+        );
     }
 
     pub fn allocShaderResourceView(
@@ -1898,6 +1936,15 @@ pub const GraphicsContext = struct {
         const byte_length = source.len * @sizeOf(T);
         const mapped_slice = std.mem.bytesAsSlice(T, mapped_buffer[0..byte_length]);
         @memcpy(mapped_slice, source);
+    }
+
+    pub fn writeVertices(
+        gctx: *GraphicsContext,
+        comptime T: type,
+        destination: VerticesHandle,
+        vertices: []const T,
+    ) HResultError!void {
+        try gctx.writeResource(T, destination.resource, vertices);
     }
 
     pub inline fn clearRenderTargetView(
