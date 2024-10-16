@@ -40,6 +40,11 @@ pub fn build(b: *std.Build) void {
             "with_te",
             "Build with bundled test engine support",
         ) orelse false,
+        .with_freetype = b.option(
+            bool,
+            "with_freetype",
+            "Build with system FreeType engine support",
+        ) orelse false,
         .use_wchar32 = b.option(
             bool,
             "use_wchar32",
@@ -111,6 +116,17 @@ pub fn build(b: *std.Build) void {
         },
         .flags = cflags,
     });
+
+    if (options.with_freetype) {
+        if (b.lazyDependency("freetype", .{})) |freetype| {
+            imgui.addCSourceFile(.{
+                .file = b.path("libs/imgui/misc/freetype/imgui_freetype.cpp"),
+                .flags = cflags,
+            });
+            imgui.defineCMacro("IMGUI_ENABLE_FREETYPE", "1");
+            imgui.linkLibrary(freetype.artifact("freetype"));
+        }
+    }
 
     if (options.use_wchar32) {
         imgui.defineCMacro("IMGUI_USE_WCHAR32", "1");
@@ -294,9 +310,10 @@ pub fn build(b: *std.Build) void {
     }
 
     if (target.result.os.tag == .macos) {
-        const system_sdk = b.dependency("system_sdk", .{});
-        imgui.addSystemIncludePath(system_sdk.path("macos12/usr/include"));
-        imgui.addFrameworkPath(system_sdk.path("macos12/System/Library/Frameworks"));
+        if (b.lazyDependency("system_sdk", .{})) |system_sdk| {
+            imgui.addSystemIncludePath(system_sdk.path("macos12/usr/include"));
+            imgui.addFrameworkPath(system_sdk.path("macos12/System/Library/Frameworks"));
+        }
     }
 
     const test_step = b.step("test", "Run zgui tests");

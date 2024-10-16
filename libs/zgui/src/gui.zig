@@ -154,6 +154,20 @@ pub const ConfigFlags = packed struct(c_int) {
     _padding: u10 = 0,
 };
 
+pub const FontBuilderFlags = packed struct(c_uint) {
+    no_hinting: bool = false,
+    no_auto_hint: bool = false,
+    force_auto_hint: bool = false,
+    light_hinting: bool = false,
+    mono_hinting: bool = false,
+    bold: bool = false,
+    oblique: bool = false,
+    monochrome: bool = false,
+    load_color: bool = false,
+    bitmap: bool = false,
+    _padding: u22 = 0,
+};
+
 pub const FontConfig = extern struct {
     font_data: ?*anyopaque,
     font_data_size: c_int,
@@ -169,7 +183,7 @@ pub const FontConfig = extern struct {
     glyph_min_advance_x: f32,
     glyph_max_advance_x: f32,
     merge_mode: bool,
-    font_builder_flags: c_uint,
+    font_builder_flags: FontBuilderFlags,
     rasterizer_multiply: f32,
     rasterizer_density: f32,
     ellipsis_char: Wchar,
@@ -1062,6 +1076,28 @@ pub const Style = extern struct {
     pub const scaleAllSizes = zguiStyle_ScaleAllSizes;
     extern fn zguiStyle_ScaleAllSizes(style: *Style, scale_factor: f32) void;
 
+    /// `pub fn styleColorsDark(*Style)`
+    pub const setColorsDark = zguiStyleColorsDark;
+
+    /// `pub fn styleColorsLight(*Style)`
+    pub const setColorsLight = zguiStyleColorsLight;
+
+    /// `pub fn styleColorsClassic(*Style)`
+    pub const setColorsClassic = zguiStyleColorsClassic;
+
+    pub const StyleColorsBuiltin = enum {
+        dark,
+        light,
+        classic,
+    };
+    pub fn setColorsBuiltin(style: *Style, variant: StyleColorsBuiltin) void {
+        switch (variant) {
+            .dark => zguiStyleColorsDark(style),
+            .light => zguiStyleColorsLight(style),
+            .classic => zguiStyleColorsClassic(style),
+        }
+    }
+
     pub fn getColor(style: Style, idx: StyleCol) [4]f32 {
         return style.colors[@intCast(@intFromEnum(idx))];
     }
@@ -1072,6 +1108,18 @@ pub const Style = extern struct {
 /// `pub fn getStyle() *Style`
 pub const getStyle = zguiGetStyle;
 extern fn zguiGetStyle() *Style;
+
+/// `pub fn styleColorsDark(*Style)`
+pub const styleColorsDark = zguiStyleColorsDark;
+extern fn zguiStyleColorsDark(style: *Style) void;
+
+/// `pub fn styleColorsLight(*Style)`
+pub const styleColorsLight = zguiStyleColorsLight;
+extern fn zguiStyleColorsLight(style: *Style) void;
+
+/// `pub fn styleColorsClassic(*Style)`
+pub const styleColorsClassic = zguiStyleColorsClassic;
+extern fn zguiStyleColorsClassic(style: *Style) void;
 //--------------------------------------------------------------------------------------------------
 pub const StyleCol = enum(c_int) {
     text,
@@ -1710,9 +1758,16 @@ pub fn comboFromEnum(
     current_item: anytype,
 ) bool {
     const EnumType = @TypeOf(current_item.*);
-    const enum_type_info = switch (@typeInfo(EnumType)) {
-        .Enum => |enum_type_info| enum_type_info,
-        else => @compileError("Error: current_item must be a pointer-to-an-enum, not a " ++ @TypeOf(current_item)),
+    const enum_type_info = getTypeInfo: {
+        switch (@typeInfo(EnumType)) {
+            .Optional => |optional_type_info| switch (@typeInfo(optional_type_info.child)) {
+                .Enum => |enum_type_info| break :getTypeInfo enum_type_info,
+                else => {},
+            },
+            .Enum => |enum_type_info| break :getTypeInfo enum_type_info,
+            else => {},
+        }
+        @compileError("Error: current_item must be a pointer-to-an-enum, not a " ++ @TypeOf(EnumType));
     };
 
     const FieldNameIndex = std.meta.Tuple(&.{ []const u8, i32 });
@@ -1730,14 +1785,22 @@ pub fn comboFromEnum(
     }
 
     const field_name_to_index = std.StaticStringMap(i32).initComptime(&field_name_to_index_list);
-    var item: i32 = field_name_to_index.get(@tagName(current_item.*)).?;
+
+    var item: i32 =
+        switch (@typeInfo(EnumType)) {
+        .Optional => if (current_item.*) |tag| field_name_to_index.get(@tagName(tag)) orelse -1 else -1,
+        .Enum => field_name_to_index.get(@tagName(current_item.*)) orelse -1,
+        else => unreachable,
+    };
 
     const result = combo(label, .{
         .items_separated_by_zeros = item_names,
         .current_item = &item,
     });
 
-    current_item.* = index_to_enum[@intCast(item)];
+    if (item > -1) {
+        current_item.* = index_to_enum[@intCast(item)];
+    }
 
     return result;
 }
@@ -3266,8 +3329,14 @@ pub const MouseButton = enum(u32) {
 pub const isMouseDown = zguiIsMouseDown;
 /// `pub fn isMouseClicked(mouse_button: MouseButton) bool`
 pub const isMouseClicked = zguiIsMouseClicked;
+/// `pub fn isMouseReleased(mouse_button: MouseButton) bool`
+pub const isMouseReleased = zguiIsMouseReleased;
 /// `pub fn isMouseDoubleClicked(mouse_button: MouseButton) bool`
 pub const isMouseDoubleClicked = zguiIsMouseDoubleClicked;
+/// `pub fn getMouseClickedCount(mouse_button: MouseButton) bool`
+pub const getMouseClickedCount = zguiGetMouseClickedCount;
+/// `pub fn isMouseDragging(mouse_button: MouseButton, lock_threshold: f32) bool`
+pub const isMouseDragging = zguiIsMouseDragging;
 /// `pub fn isItemClicked(mouse_button: MouseButton) bool`
 pub const isItemClicked = zguiIsItemClicked;
 /// `pub fn isItemVisible() bool`
@@ -3290,7 +3359,10 @@ pub const isAnyItemActive = zguiIsAnyItemActive;
 pub const isAnyItemFocused = zguiIsAnyItemFocused;
 extern fn zguiIsMouseDown(mouse_button: MouseButton) bool;
 extern fn zguiIsMouseClicked(mouse_button: MouseButton) bool;
+extern fn zguiIsMouseReleased(mouse_button: MouseButton) bool;
 extern fn zguiIsMouseDoubleClicked(mouse_button: MouseButton) bool;
+extern fn zguiGetMouseClickedCount(mouse_button: MouseButton) u32;
+extern fn zguiIsMouseDragging(mouse_button: MouseButton, lock_threshold: f32) bool;
 extern fn zguiIsItemHovered(flags: HoveredFlags) bool;
 extern fn zguiIsItemActive() bool;
 extern fn zguiIsItemFocused() bool;

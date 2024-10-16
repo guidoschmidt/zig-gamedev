@@ -29,6 +29,7 @@
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Collision/PhysicsMaterial.h>
+#include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Constraints/FixedConstraint.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyActivationListener.h>
@@ -274,10 +275,15 @@ FN(toJph)(const JPC_SubShapeIDCreator *in) { assert(in); return reinterpret_cast
 FN(toJpc)(JPH::SubShapeIDCreator *in) { assert(in); return reinterpret_cast<JPC_SubShapeIDCreator *>(in); }
 FN(toJph)(JPC_SubShapeIDCreator *in) { assert(in); return reinterpret_cast<JPH::SubShapeIDCreator *>(in); }
 
-FN(toJpc)(const JPH::RayCast *in) { assert(in); return reinterpret_cast<const JPC_RRayCast *>(in); }
-FN(toJph)(const JPC_RRayCast *in) { assert(in); return reinterpret_cast<const JPH::RayCast *>(in); }
-FN(toJpc)(JPH::RayCast *in) { assert(in); return reinterpret_cast<JPC_RRayCast *>(in); }
-FN(toJph)(JPC_RRayCast *in) { assert(in); return reinterpret_cast<JPH::RayCast *>(in); }
+FN(toJpc)(const JPH::RayCast *in) { assert(in); return reinterpret_cast<const JPC_RayCast *>(in); }
+FN(toJph)(const JPC_RayCast *in) { assert(in); return reinterpret_cast<const JPH::RayCast *>(in); }
+FN(toJpc)(JPH::RayCast *in) { assert(in); return reinterpret_cast<JPC_RayCast *>(in); }
+FN(toJph)(JPC_RayCast *in) { assert(in); return reinterpret_cast<JPH::RayCast *>(in); }
+
+FN(toJpc)(const JPH::RRayCast *in) { assert(in); return reinterpret_cast<const JPC_RRayCast *>(in); }
+FN(toJph)(const JPC_RRayCast *in) { assert(in); return reinterpret_cast<const JPH::RRayCast *>(in); }
+FN(toJpc)(JPH::RRayCast *in) { assert(in); return reinterpret_cast<JPC_RRayCast *>(in); }
+FN(toJph)(JPC_RRayCast *in) { assert(in); return reinterpret_cast<JPH::RRayCast *>(in); }
 
 FN(toJpc)(const JPH::RayCastResult *in) { assert(in); return reinterpret_cast<const JPC_RayCastResult *>(in); }
 FN(toJph)(const JPC_RayCastResult *in) { assert(in); return reinterpret_cast<const JPH::RayCastResult *>(in); }
@@ -804,8 +810,7 @@ public:
         JPH::DebugRenderer::ECastShadow inCastShadow,
         JPH::DebugRenderer::EDrawMode inDrawMode) override
     {
-        float in_model_matrix[16]; // Model matrix will always be rounded to floats (JPH samples assume the same).
-        storeMat44(in_model_matrix, inModelMatrix.ToMat44());
+        auto in_model_matrix = reinterpret_cast<const JPC_RMatrix*>(&inModelMatrix);
         JPC_DebugRenderer_Geometry in_geometry {
             toJpc(&inGeometry.GetPtr()->mLODs[0]),
             static_cast<uint64_t>(inGeometry.GetPtr()->mLODs.size()),
@@ -1727,10 +1732,10 @@ JPC_MeshShapeSettings_Sanitize(JPC_MeshShapeSettings *in_settings)
 //--------------------------------------------------------------------------------------------------
 JPC_API JPC_DecoratedShapeSettings *
 JPC_RotatedTranslatedShapeSettings_Create(const JPC_ShapeSettings *in_inner_shape_settings,
-                                          const JPC_Real in_rotated[4],
-                                          const JPC_Real in_translated[3])
+                                          const float in_rotated[4],
+                                          const float in_translated[3])
 {
-    auto settings = new JPH::RotatedTranslatedShapeSettings(loadRVec3(in_translated),
+    auto settings = new JPH::RotatedTranslatedShapeSettings(loadVec3(in_translated),
                                                             JPH::Quat(loadVec4(in_rotated)),
                                                             toJph(in_inner_shape_settings));
     settings->AddRef();
@@ -1739,18 +1744,18 @@ JPC_RotatedTranslatedShapeSettings_Create(const JPC_ShapeSettings *in_inner_shap
 //--------------------------------------------------------------------------------------------------
 JPC_API JPC_DecoratedShapeSettings *
 JPC_ScaledShapeSettings_Create(const JPC_ShapeSettings *in_inner_shape_settings,
-                               const JPC_Real in_scale[3])
+                               const float in_scale[3])
 {
-    auto settings = new JPH::ScaledShapeSettings(toJph(in_inner_shape_settings), loadRVec3(in_scale));
+    auto settings = new JPH::ScaledShapeSettings(toJph(in_inner_shape_settings), loadVec3(in_scale));
     settings->AddRef();
     return toJpc(settings);
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API JPC_DecoratedShapeSettings *
 JPC_OffsetCenterOfMassShapeSettings_Create(const JPC_ShapeSettings *in_inner_shape_settings,
-                                           const JPC_Real in_center_of_mass[3])
+                                           const float in_center_of_mass[3])
 {
-    auto settings = new JPH::OffsetCenterOfMassShapeSettings(loadRVec3(in_center_of_mass),
+    auto settings = new JPH::OffsetCenterOfMassShapeSettings(loadVec3(in_center_of_mass),
                                                              toJph(in_inner_shape_settings));
     settings->AddRef();
     return toJpc(settings);
@@ -1778,12 +1783,12 @@ JPC_MutableCompoundShapeSettings_Create()
 //--------------------------------------------------------------------------------------------------
 JPC_API void
 JPC_CompoundShapeSettings_AddShape(JPC_CompoundShapeSettings *in_settings,
-                                   const JPC_Real in_position[3],
-                                   const JPC_Real in_rotation[4],
+                                   const float in_position[3],
+                                   const float in_rotation[4],
                                    const JPC_ShapeSettings *in_shape,
                                    const uint32_t in_user_data)
 {
-    toJph(in_settings)->AddShape(loadRVec3(in_position),
+    toJph(in_settings)->AddShape(loadVec3(in_position),
                                  JPH::Quat(loadVec4(in_rotation)),
                                  toJph(in_shape),
                                  in_user_data);
@@ -1875,10 +1880,16 @@ JPC_Shape_SetUserData(JPC_Shape *in_shape, uint64_t in_user_data)
     return toJph(in_shape)->SetUserData(in_user_data);
 }
 //--------------------------------------------------------------------------------------------------
-JPC_API void
-JPC_Shape_GetCenterOfMass(const JPC_Shape *in_shape, JPC_Real out_position[3])
+JPC_API float
+JPC_Shape_GetVolume(const JPC_Shape *in_shape)
 {
-    storeRVec3(out_position, toJph(in_shape)->GetCenterOfMass());
+    return toJph(in_shape)->GetVolume();
+}
+//--------------------------------------------------------------------------------------------------
+JPC_API void
+JPC_Shape_GetCenterOfMass(const JPC_Shape *in_shape, float out_position[3])
+{
+    storeVec3(out_position, toJph(in_shape)->GetCenterOfMass());
 }
 //--------------------------------------------------------------------------------------------------
 JPC_API JPC_AABox
@@ -1916,7 +1927,7 @@ JPC_Shape_GetSupportingFace(const JPC_Shape *in_shape,
 //--------------------------------------------------------------------------------------------------
 JPC_API bool
 JPC_Shape_CastRay(const JPC_Shape *in_shape,
-                  const JPC_RRayCast *in_ray,
+                  const JPC_RayCast *in_ray,
                   const JPC_SubShapeIDCreator *in_id_creator,
                   JPC_RayCastResult *io_hit)
 {
@@ -2249,7 +2260,7 @@ JPC_BodyInterface_GetCenterOfMassPosition(const JPC_BodyInterface *in_iface,
 JPC_API void
 JPC_BodyInterface_SetRotation(JPC_BodyInterface *in_iface,
                               JPC_BodyID in_body_id,
-                              const JPC_Real in_rotation[4],
+                              const float in_rotation[4],
                               JPC_Activation in_activation)
 {
     toJph(in_iface)->SetRotation(toJph(in_body_id), JPH::Quat(loadVec4(in_rotation)), static_cast<JPH::EActivation>(in_activation));
@@ -3001,7 +3012,7 @@ JPC_Character_Create(const JPC_CharacterSettings *in_settings,
                      JPC_PhysicsSystem *in_physics_system)
 {
     auto character = new JPH::Character(toJph(in_settings),
-                                        loadVec3(in_position),
+                                        loadRVec3(in_position),
                                         JPH::Quat(loadVec4(in_rotation)),
                                         in_user_data,
                                         toJph(in_physics_system));
@@ -3079,7 +3090,7 @@ JPC_CharacterVirtual_Create(const JPC_CharacterVirtualSettings *in_settings,
                             JPC_PhysicsSystem *in_physics_system)
 {
     auto character = new JPH::CharacterVirtual(
-        toJph(in_settings), loadVec3(in_position), JPH::Quat(loadVec4(in_rotation)), toJph(in_physics_system));
+        toJph(in_settings), loadRVec3(in_position), JPH::Quat(loadVec4(in_rotation)), toJph(in_physics_system));
     return toJpc(character);
 }
 //--------------------------------------------------------------------------------------------------

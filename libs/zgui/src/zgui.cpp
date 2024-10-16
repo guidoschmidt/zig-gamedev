@@ -1216,6 +1216,21 @@ extern "C"
         style->ScaleAllSizes(scale_factor);
     }
 
+    ZGUI_API void zguiStyleColorsDark(ImGuiStyle *style)
+    {
+        ImGui::StyleColorsDark(style);
+    }
+
+    ZGUI_API void zguiStyleColorsLight(ImGuiStyle *style)
+    {
+        ImGui::StyleColorsLight(style);
+    }
+
+    ZGUI_API void zguiStyleColorsClassic(ImGuiStyle *style)
+    {
+        ImGui::StyleColorsClassic(style);
+    }
+
     ZGUI_API void zguiPushStyleColor4f(ImGuiCol idx, const float col[4])
     {
         ImGui::PushStyleColor(idx, {col[0], col[1], col[2], col[3]});
@@ -1611,9 +1626,24 @@ extern "C"
         return ImGui::IsMouseClicked(button);
     }
 
+    ZGUI_API bool zguiIsMouseReleased(ImGuiMouseButton button)
+    {
+        return ImGui::IsMouseReleased(button);
+    }
+
     ZGUI_API bool zguiIsMouseDoubleClicked(ImGuiMouseButton button)
     {
         return ImGui::IsMouseDoubleClicked(button);
+    }
+
+    ZGUI_API int zguiGetMouseClickedCount(ImGuiMouseButton button)
+    {
+        return ImGui::GetMouseClickedCount(button);
+    }
+
+    ZGUI_API bool zguiIsMouseDragging(ImGuiMouseButton button, float lock_threshold)
+    {
+        return ImGui::IsMouseDragging(button, lock_threshold);
     }
 
     ZGUI_API bool zguiIsItemVisible(void)

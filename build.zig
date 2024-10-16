@@ -41,14 +41,19 @@ pub fn build(b: *std.Build) void {
     const options = .{
         .optimize = optimize,
         .target = target,
-        .zd3d12_enable_debug_layer = b.option(
+        .zxaudio2_debug_layer = b.option(
             bool,
-            "zd3d12-enable-debug-layer",
+            "zxaudio2_debug_layer",
+            "Enable XAudio2 debug layer",
+        ) orelse false,
+        .zd3d12_debug_layer = b.option(
+            bool,
+            "zd3d12_debug_layer",
             "Enable DirectX 12 debug layer",
         ) orelse false,
-        .zd3d12_enable_gbv = b.option(
+        .zd3d12_gbv = b.option(
             bool,
-            "zd3d12-enable-gbv",
+            "zd3d12_gbv",
             "Enable DirectX 12 GPU-Based Validation (GBV)",
         ) orelse false,
         .zpix_enable = zpix_enable,
@@ -60,11 +65,6 @@ pub fn build(b: *std.Build) void {
     };
 
     if (target.result.os.tag == .emscripten) {
-        // If user did not set --sysroot then default to zemscripten's emsdk path
-        if (b.sysroot == null) {
-            b.sysroot = b.dependency("emsdk", .{}).path("upstream/emscripten/cache/sysroot").getPath(b);
-            std.log.info("sysroot set to \"{s}\"", .{b.sysroot.?});
-        }
         buildAndInstallSamplesWeb(b, .{
             .optimize = optimize,
             .target = target,
@@ -79,35 +79,35 @@ pub fn build(b: *std.Build) void {
                 }
             }
         }
+    }
 
-        { // Tests
-            const test_step = b.step("test", "Run all tests");
-            tests(b, target, optimize, test_step);
-        }
+    { // Tests
+        const test_step = b.step("test", "Run all tests");
+        tests(b, target, optimize, test_step);
+    }
 
-        { // Benchmarks
-            const benchmark_step = b.step("benchmark", "Run all benchmarks");
-            const zmath = b.dependency("zmath", .{
-                .optimize = .ReleaseFast,
-            });
-            benchmark_step.dependOn(&b.addRunArtifact(zmath.artifact("zmath-benchmarks")).step);
-        }
+    { // Benchmarks
+        const benchmark_step = b.step("benchmark", "Run all benchmarks");
+        const zmath = b.dependency("zmath", .{
+            .optimize = .ReleaseFast,
+        });
+        benchmark_step.dependOn(&b.addRunArtifact(zmath.artifact("zmath-benchmarks")).step);
+    }
 
-        // Experiments
-        if (b.option(bool, "experiments", "Build our prototypes and experimental programs") orelse false) {
-            @import("experiments/build.zig").build(b, options);
-        }
+    // Experiments
+    if (b.option(bool, "experiments", "Build our prototypes and experimental programs") orelse false) {
+        @import("experiments/build.zig").build(b, options);
     }
 }
 
-const samples_windows = struct {
+pub const samples_windows = struct {
     pub const audio_experiments = @import("samples/audio_experiments/build.zig");
     pub const audio_playback_test = @import("samples/audio_playback_test/build.zig");
     pub const directml_convolution_test = @import("samples/directml_convolution_test/build.zig");
     pub const vector_graphics_test = @import("samples/vector_graphics_test/build.zig");
 };
 
-const samples_windows_linux = struct {
+pub const samples_windows_linux = struct {
     pub const bindless = @import("samples/bindless/build.zig");
     pub const mesh_shader_test = @import("samples/mesh_shader_test/build.zig");
     pub const minimal_d3d12 = @import("samples/minimal_d3d12/build.zig");
@@ -124,7 +124,9 @@ const samples_windows_linux = struct {
     pub const zphysics_instanced_cubes_d3d12 = @import("samples/zphysics_instanced_cubes_d3d12/build.zig");
 };
 
-const samples_cross_platform = struct {
+pub const samples_cross_platform = struct {
+    pub const sdl2_demo = @import("samples/sdl2_demo/build.zig");
+
     // OpenGL samples
     pub const minimal_glfw_gl = @import("samples/minimal_glfw_gl/build.zig");
     pub const minimal_sdl_gl = @import("samples/minimal_sdl_gl/build.zig");
@@ -147,7 +149,9 @@ const samples_cross_platform = struct {
     pub const triangle_wgpu = @import("samples/triangle_wgpu/build.zig");
 };
 
-const samples_web = struct {
+pub const samples_web = struct {
+    pub const sdl2_demo = samples_cross_platform.sdl2_demo;
+
     // TODO: WebGL samples
     // pub const minimal_glfw_gl = samples_cross_platform.minimal_glfw_gl;
     // pub const minimal_sdl_gl = samples_cross_platform.minimal_sdl_gl;
@@ -193,12 +197,15 @@ fn buildAndInstallSamples(b: *std.Build, options: anytype, comptime samples: any
 }
 
 fn buildAndInstallSamplesWeb(b: *std.Build, options: anytype) void {
+    const zemscripten = @import("zemscripten");
+
+    const activate_emsdk_step = zemscripten.activateEmsdkStep(b);
+
     inline for (comptime std.meta.declarations(samples_web)) |d| {
         const build_web_app_step = @field(samples_web, d.name).buildWeb(b, options);
-        build_web_app_step.dependOn(@import("zemscripten").activateEmsdkStep(b));
-        b.getInstallStep().dependOn(build_web_app_step);
+        build_web_app_step.dependOn(activate_emsdk_step);
 
-        b.step(d.name, "Build '" ++ d.name ++ "' demo").dependOn(build_web_app_step);
+        b.getInstallStep().dependOn(build_web_app_step);
 
         const html_filename = std.fmt.allocPrint(
             b.allocator,
@@ -206,17 +213,22 @@ fn buildAndInstallSamplesWeb(b: *std.Build, options: anytype) void {
             .{d.name},
         ) catch unreachable;
 
-        const emrun_args = .{};
-        const emrun_step = @import("zemscripten").emrunStep(
+        const emrun_step = zemscripten.emrunStep(
             b,
             b.getInstallPath(.{ .custom = "web" }, html_filename),
-            &emrun_args,
+            &.{},
         );
-
         emrun_step.dependOn(build_web_app_step);
 
-        const run_step = b.step(d.name ++ "-run", "Serve and run the web app locally");
-        run_step.dependOn(emrun_step);
+        b.step(
+            d.name,
+            "Build '" ++ d.name ++ "' sample as a web app",
+        ).dependOn(build_web_app_step);
+
+        b.step(
+            d.name ++ "-emrun",
+            "Build '" ++ d.name ++ "' sample as a web app and serve locally using `emrun`",
+        ).dependOn(emrun_step);
     }
 }
 
@@ -275,11 +287,17 @@ fn tests(
     });
     test_step.dependOn(&b.addRunArtifact(zmesh.artifact("zmesh-tests")).step);
 
-    const zphysics = b.dependency("zphysics", .{
+    test_step.dependOn(&b.addRunArtifact(b.dependency("zphysics", .{
         .target = target,
         .optimize = optimize,
-    });
-    test_step.dependOn(&b.addRunArtifact(zphysics.artifact("zphysics-tests")).step);
+        .use_double_precision = false,
+    }).artifact("zphysics-tests")).step);
+
+    test_step.dependOn(&b.addRunArtifact(b.dependency("zphysics", .{
+        .target = target,
+        .optimize = optimize,
+        .use_double_precision = true,
+    }).artifact("zphysics-tests")).step);
 
     const zpool = b.dependency("zpool", .{
         .target = target,

@@ -12,16 +12,7 @@ Add `zemscripten` and (optionally) `emsdk` to your build.zig.zon dependencies:
         },
 ```
 
-Set sysroot to one proveded by Emsdk. Either specify it when calling `zig build --sysroot /path/to/local/emsdk` or in your build.zig
-```zig
-    // If user did not set --sysroot then default to emsdk package path
-    if (b.sysroot == null) {
-        b.sysroot = b.dependency("emsdk", .{}).path("upstream/emscripten/cache/sysroot").getPath(b);
-        std.log.info("sysroot set to \"{s}\"", .{b.sysroot.?});
-    }
-```
-
-Note that Emsdk must be activated before it can be used. You can use `activateEmsdkStep` to create a build step for that:
+Emsdk must be activated before it can be used. You can use `activateEmsdkStep` to create a build step for that:
 ```zig
     const activate_emsdk_step = @import("zemscripten").activateEmsdkStep(b);
 ```
@@ -46,15 +37,19 @@ Add zemscripten's "root" module to your wasm compile target., then create an `em
 
     try emcc_settings.put("ALLOW_MEMORY_GROWTH", "1");
 
-    const emcc_step = @import("zemscripten").emccStep(b, wasm, .{
-        .optimize = optimize,
-        .flags = emcc_flags,
-        .settings = emcc_settings,
-        .use_preload_plugins = true,
-        .embed_paths = &.{},
-        .preload_paths = &.{},
-        .install_dir = .{ .custom = "web" },
-    });
+    const emcc_step = @import("zemscripten").emccStep(
+        b,
+        wasm,
+        .{
+            .optimize = optimize,
+            .flags = emcc_flags,
+            .settings = emcc_settings,
+            .use_preload_plugins = true,
+            .embed_paths = &.{},
+            .preload_paths = &.{},
+            .install_dir = .{ .custom = "web" },
+        },
+    );
     emcc_step.dependOn(activate_emsdk_step);
 
     b.getInstallStep().dependOn(emcc_step);
@@ -82,11 +77,14 @@ You can also define a run step that invokes `emrun`. This will serve the html lo
     const html_filename = try std.fmt.allocPrint(b.allocator, "{s}.html", .{wasm.name});
 
     const emrun_args = .{};
-    const emrun_step = @import("zemscripten").emrunStep(b, b.getInstallPath(.{ .custom = "web" }, html_filename, &emrun_args));
+    const emrun_step = @import("zemscripten").emrunStep(
+        b,
+        b.getInstallPath(.{ .custom = "web" }, html_filename),
+        &emrun_args,
+    );
 
     emrun_step.dependOn(emcc_step);
 
-    const run_step = b.step("emrun", "Serve and run the web app locally using emrun");
-    run_step.dependOn(emrun_step);
+    b.step("emrun", "Build and open the web app locally using emrun").dependOn(emrun_step);
 ```
 See the [emrun documentation](https://emscripten.org/docs/compiling/Running-html-files-with-emrun.html) for the difference args that can be used.
